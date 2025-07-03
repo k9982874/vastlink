@@ -1,97 +1,125 @@
-import { NextRequest, NextResponse } from "next/server"
 import dayjs from "dayjs"
+import { NextRequest, NextResponse } from "next/server"
 
-import mockData from "./mock_data.json"
+const wallets: { [key: string]: string } = {
+  BTC: "tb1sqzv2ha4yrlfvgwsye628vh3esyg96dhtncapxeua",
+  ETH: "0xec6715f2073c7c846c447aA14A67ebb0b0f806C0",
+  USDT: "0x6f1fEb0f30f9dd7F75cAA2903350dE7F6CF33a01",
+  USDC: "0x6f1fEb0f30f9dd7F75cAA2903350dE7F6CF33a01",
+  TSTLPX: "0xCa3c64e7D8cA743aeD2B2d20DCA3233f400710E2",
+  VAST: "0x6f1fEb0f30f9dd7F75cAA2903350dE7F6CF33a01",
+}
 
-export async function GET(req: NextRequest) {
-  const page = parseInt(req.nextUrl.searchParams.get("page") || "1")
-  const size = parseInt(req.nextUrl.searchParams.get("size") || "20")
-  const asset = req.nextUrl.searchParams.get("asset")
-  const type = req.nextUrl.searchParams.get("type")
-  const status = req.nextUrl.searchParams.get("status")
-  const from = req.nextUrl.searchParams.get("from")
-  const to = req.nextUrl.searchParams.get("to")
+const defaultMetaData = [
+  { asset: "BTC", network: "Bitcoin", lastId: null },
+  { asset: "ETH", network: "Ethereum", lastId: null },
+  { asset: "USDT", network: "Tether (ERC-20)", lastId: null },
+  { asset: "USDC", network: "USD Coin (ERC-20)", lastId: null },
+  {
+    asset: "TSTLPX",
+    network: "Chronicle Yellowstone - Lit Protocol Testnet",
+    lastId: null,
+  },
+  { asset: "VAST", network: "Vast (ERC-20)", lastId: null },
+]
 
-  const assets: string[] = []
-  const types: string[] = []
-  const statuses: string[] = []
-
-  for (const item of mockData) {
-    if (!assets.includes(item.asset)) {
-      assets.push(item.asset)
-    }
-    if (!types.includes(item.type)) {
-      types.push(item.type)
-    }
-    if (!statuses.includes(item.status)) {
-      statuses.push(item.status)
-    }
+async function getTransactions(
+  asset: string,
+  lastId: string | null
+): Promise<HistoryResponse> {
+  if (!Object.keys(wallets).includes(asset)) {
+    throw new Error("invalid asset")
   }
 
-  let data = [...mockData]
-  if (asset) {
-    data = data.filter(
-      (transaction) => transaction.asset.toLowerCase() === asset
+  const address = wallets[asset]
+
+  const url =
+    "https://staging.app.vastbase.vastlink.xyz/api/transaction/history" +
+    `?address=${address}&tokenType=${asset}` +
+    (lastId ? `&lastId=${lastId}` : "")
+
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error("failed to fetch transations")
+  }
+
+  const data: HistoryResponse = await res.json()
+  if (data.lastId === lastId) {
+    data.lastId = null
+    data.hasMore = false
+  }
+
+  return data
+}
+
+export async function POST(req: NextRequest) {
+  let body: {
+    asset: string
+    lastId: string | null
+  }[] = []
+
+  try {
+    body = await req.json()
+  } catch {
+    body = [...defaultMetaData]
+  }
+
+  try {
+    const data = await Promise.all(
+      body.map((v) =>
+        getTransactions(v.asset.toUpperCase(), v.lastId).then((result) => ({
+          asset: v.asset,
+          lastId: result.lastId,
+          transactions: result.transactions,
+        }))
+      )
     )
-  }
-  if (type) {
-    data = data.filter((transaction) => transaction.type.toLowerCase() === type)
-  }
-  if (status) {
-    data = data.filter(
-      (transaction) => transaction.status.toLowerCase() === status
-    )
-  }
 
-  data.sort((a, b) => {
-    return dayjs(b.timestamp).unix() - dayjs(a.timestamp).unix()
-  })
+    const metadata = [...defaultMetaData]
+    const transactions = []
 
-  if (from && to) {
-    let startDate = dayjs(from)
-    let endDate = dayjs(to)
-    if (startDate.isValid() && endDate.isValid()) {
-      startDate = startDate.startOf("day")
-      endDate = endDate.endOf("day")
+    for (const item of data) {
+      const pos = metadata.findIndex((v) => v.asset === item.asset)
+      if (pos === -1) {
+        continue
+      }
 
-      data = data.filter((transaction) => {
-        const transactionDate = dayjs(transaction.timestamp)
-        return (
-          transactionDate.isAfter(startDate) &&
-          transactionDate.isBefore(endDate)
-        )
-      })
+      metadata[pos].lastId = item.lastId
+
+      for (const t of item.transactions) {
+        transactions.push({
+          asset: metadata[pos].asset,
+          network: metadata[pos].network,
+          ...t,
+        })
+      }
     }
+
+    transactions.sort((a, b) => {
+      const d1 = dayjs(a.timestamp)
+      const d2 = dayjs(b.timestamp)
+
+      if (d1.isValid() && d2.isValid()) {
+        return d2.diff(d1, "second")
+      }
+
+      return d1.isValid() ? -1 : 1
+    })
+
+    return NextResponse.json({
+      code: 200,
+      message: "ok",
+      data: {
+        metadata,
+        transactions,
+      },
+    })
+  } catch (err) {
+    console.log(err)
+    return NextResponse.json({
+      code: 500,
+      message: "internal server error",
+      data: null,
+    })
   }
-
-  const total = data.length
-  const totalPages = Math.ceil(total / size)
-
-  if (data.length > size) {
-    data = data.slice((page - 1) * size, page * size)
-  }
-
-  return NextResponse.json({
-    code: 200,
-    message: "ok",
-    filters: [
-      {
-        label: "Asset",
-        values: assets.sort(),
-      },
-      {
-        label: "Type",
-        values: types.sort(),
-      },
-      {
-        label: "Status",
-        values: statuses.sort(),
-      },
-    ],
-    data,
-    total,
-    page,
-    pageSize: size,
-    totalPages,
-  })
 }
