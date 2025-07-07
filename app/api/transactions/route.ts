@@ -1,14 +1,6 @@
+import wallet from "@/constance/wallet"
 import dayjs from "dayjs"
 import { NextRequest, NextResponse } from "next/server"
-
-const wallets: { [key: string]: string } = {
-  BTC: "tb1sqzv2ha4yrlfvgwsye628vh3esyg96dhtncapxeua",
-  ETH: "0xec6715f2073c7c846c447aA14A67ebb0b0f806C0",
-  USDT: "0x6f1fEb0f30f9dd7F75cAA2903350dE7F6CF33a01",
-  USDC: "0x6f1fEb0f30f9dd7F75cAA2903350dE7F6CF33a01",
-  TSTLPX: "0xCa3c64e7D8cA743aeD2B2d20DCA3233f400710E2",
-  VAST: "0x6f1fEb0f30f9dd7F75cAA2903350dE7F6CF33a01",
-}
 
 const defaultMetaData = [
   { asset: "BTC", network: "Bitcoin", lastId: null },
@@ -27,15 +19,15 @@ async function getTransactions(
   asset: string,
   lastId: string | null
 ): Promise<HistoryResponse> {
-  if (!Object.keys(wallets).includes(asset)) {
+  if (!Object.keys(wallet).includes(asset)) {
     throw new Error("invalid asset")
   }
 
-  const address = wallets[asset]
+  const walletAddress = wallet[asset].walletAddress
 
   const url =
     "https://staging.app.vastbase.vastlink.xyz/api/transaction/history" +
-    `?address=${address}&tokenType=${asset}` +
+    `?address=${walletAddress}&tokenType=${asset}` +
     (lastId ? `&lastId=${lastId}` : "")
 
   const res = await fetch(url)
@@ -114,8 +106,7 @@ export async function POST(req: NextRequest) {
         transactions,
       },
     })
-  } catch (err) {
-    console.log(err)
+  } catch {
     return NextResponse.json({
       code: 500,
       message: "internal server error",

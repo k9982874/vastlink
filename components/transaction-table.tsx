@@ -51,8 +51,6 @@ const fetcher = async (
   const url = args[0]
   const assets = args[1]
 
-  console.log(assets)
-
   const res = await fetch(url, {
     method: "POST",
     body: assets.length > 0 ? JSON.stringify(assets) : null,

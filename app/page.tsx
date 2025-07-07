@@ -1,4 +1,5 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import Balance from "@/components/balance"
 import { TransactionTable } from "@/components/transaction-table"
 
 import { WalletIcon } from "lucide-react"
@@ -10,6 +11,8 @@ export default async function Home() {
         <WalletIcon className="mr-2 inline-block h-6 w-6" />
         <h1 className="text-lg">VastBase Alpha</h1>
       </div>
+
+      <Balance />
 
       <ToggleGroup type="single" className="w-full" size="lg">
         <ToggleGroupItem value="transactions">
